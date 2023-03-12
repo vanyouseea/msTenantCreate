@@ -1,0 +1,191 @@
+<html>
+<head>
+	<meta charset="UTF-8">
+	<title>空全局创建系统</title>
+	<script src="/js/jquery.min.js" ></script>
+	<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=yes" />
+	<style type="text/css"> 
+		.full{ 
+        	width: 310px;
+        	height: 350px;
+        	border: solid 2px ;
+        	top: 50%;
+        	left: 50%;
+        	margin-left: -155px;
+        	margin-top: -200px;
+        	position: relative;
+        	text-align: center;
+        	border-radius: 15px 15px 15px 15px; /* 边框的弧度*/
+    	}
+    	.msg{
+    		font-size: 12px;
+    		margin: 10px;
+    		padding: 3px
+    	}
+	</style>
+	
+</head>
+<body>
+	<div class="full">
+		<div ><h2>空全局创建系统</h2></div>
+		<div style="margin-bottom:7px" >
+			<b>账户: </b><input id="username" name="username"/>
+		</div>
+		<div style="margin-bottom:7px">
+			<b>密码: </b><input id="password" name="password"/>
+		</div>		
+		<div style="margin-bottom:7px">
+			<b>国家:</b>
+			<select id="location">
+				<option value="SG">新加坡</option>
+				<option value="US">美国</option>
+				<option value="JP">日本</option>
+				<option value="CN">中国</option>
+				<option value="IN">印度</option>
+				<option value="DE">德国</option>
+				<option value="UK">英国</option>
+				<option value="NL">荷兰</option>
+			</select>
+			<b>删除老用户:</b> <input type="checkbox" id="deleteUser" name="deleteUser">
+		</div>
+		<input  type="button" value="开始" onclick="startUp()" id="startUp" />
+		<div id="msg" class="msg"></div>
+		<input type="hidden" id="token" value="token" />
+		<input type="hidden" id="challengeId" value="challengeId" />
+		<input type="hidden" id="newTenantId" value="newTenantId" />
+		<input type="hidden" id="azureRegion" value="azureRegion" />
+		<input type="hidden" id="dirName" value="dirName">
+	</div>
+
+	<script>
+		function startUp(){
+			let username = $('#username').val();
+			let password = $('#password').val();
+			
+			if(username!=''&&password!=''){
+				$('#username').attr('disabled', true);
+				$('#password').attr('disabled', true);
+				$('#location').attr('disabled', true);
+				$('#startUp').attr('disabled', true);
+				$('#deleteUser').attr('disabled', true);
+				
+				$.ajax({
+				    type : "POST", 
+				    url : "/startUp?time="+Date.now(),
+				    data : { "username": username, "password":password },
+				    success : function(result) {
+				    	if (result==null||result==""){
+				    		$('#msg').html('无法获得token，请检查您的凭据');
+							$('#username').removeAttr('disabled');
+							$('#password').removeAttr('disabled');
+							$('#location').removeAttr('disabled');
+							$('#startUp').removeAttr('disabled');
+							$('#deleteUser').removeAttr('disabled');
+				    	}
+				    	else{
+				    		$('#msg').text("已获得token，正在请求验证码");
+							$.ajax({
+							    type : "POST", 
+							    url : "/getChallengeCd?time="+Date.now(),
+							    data : { "token": result },
+							    success : function(result2) {
+							    	$('#token').val(result2.token);
+							    	$('#challengeId').val(result2.challengeId);
+							    	$('#azureRegion').val(result2.azureRegion);
+							    	$('#msg').html("<img src='data:image/png;base64,"+result2.challengeString+"' /><br>"+
+							    	"请输入验证码:<input id='code' style='margin-bottom:7px' /><br>"+
+							    	"<input type='button' value='验证' id='verifyBtn' onclick=createTenant() />"
+							    	);
+							    },
+								error : function(e){
+							       	$('#msg').html('无法获得验证码');
+									$('#username').removeAttr('disabled');
+									$('#password').removeAttr('disabled');
+									$('#location').removeAttr('disabled');
+									$('#startUp').removeAttr('disabled');
+									$('#deleteUser').removeAttr('disabled');
+								}
+							});
+				    	}
+				    },
+					error : function(e){
+						$('#msg').html('无法获得token，请检查您的凭据');
+						$('#username').removeAttr('disabled');
+						$('#password').removeAttr('disabled');
+						$('#location').removeAttr('disabled');
+						$('#startUp').removeAttr('disabled');
+						$('#deleteUser').removeAttr('disabled');
+					}
+				});
+			}
+			else{
+				$('#msg').html('请输入账户和密码');
+			}
+	
+		}
+		
+		function createTenant(){
+			let username = $('#username').val();
+			let password = $('#password').val();
+			let code = $('#code').val();
+			let token = $('#token').val();
+			let challengeId = $('#challengeId').val();
+			let location = $('#location').val();
+			let deleteUser = $('#deleteUser').is(':checked');
+			let azureRegion = $('#azureRegion').val();
+			
+			$('#verifyBtn').attr('disabled', true);
+			$('#msg').html('正在创建空全局,这会花费较长的时间,请耐心等待...');
+			$.ajax({
+			    type : "POST", 
+			    url : "/createTenant?time="+Date.now(),
+			    data : {"token":token, "challengeId": challengeId, "inputSolution": code, "location": location, "azureRegion": azureRegion },
+			    success : function(result) {
+			    	$('#newTenantId').val(result.newTenantId);
+			    	$('#dirName').val(result.dirName);
+			    	$('#msg').html('已成功创建空全局 '+result.dirName+'('+result.newTenantId+') ,正在新建用户中...');
+					$.ajax({
+					    type : "POST", 
+					    url : "/createUser?time="+Date.now(),
+					    data : {"username": username, "password":password, "tenantId": $('#newTenantId').val(), "dirName": $('#dirName').val(), "location": location, "deleteUser": deleteUser },
+					    success : function(result1) {
+					    	if(deleteUser){
+						    	$('#msg').html('<br>已成功创建新用户 admin@'+$('#dirName').val()+'.onmicrosoft.com <br>密码是 '+password
+						    			+"<br>将在新全局中异步删除 "+username+" ,您可以继续创建新的空全局");
+					    	}
+					    	else{
+						    	$('#msg').html('<br>已成功创建新用户 admin@'+$('#dirName').val()+'.onmicrosoft.com <br>密码是 '+password);
+					    	}
+							$('#username').removeAttr('disabled');
+							$('#password').removeAttr('disabled');
+							$('#location').removeAttr('disabled');
+							$('#startUp').removeAttr('disabled');
+							$('#verifyBtn').removeAttr('disabled');
+							$('#deleteUser').removeAttr('disabled');
+					    },
+						error : function(e){
+					       	$('#msg').html('创建用户时出现错误');
+							$('#username').removeAttr('disabled');
+							$('#password').removeAttr('disabled');
+							$('#location').removeAttr('disabled');
+							$('#startUp').removeAttr('disabled');
+							$('#verifyBtn').removeAttr('disabled');
+							$('#deleteUser').removeAttr('disabled');
+						}
+					});
+			    },
+				error : function(e){
+			       	$('#msg').html('创建全局时出现错误');
+					$('#username').removeAttr('disabled');
+					$('#password').removeAttr('disabled');
+					$('#location').removeAttr('disabled');
+					$('#startUp').removeAttr('disabled');
+					$('#verifyBtn').removeAttr('disabled');
+					$('#deleteUser').removeAttr('disabled');
+				}
+			});
+		}
+	</script>
+
+</body>
+</html>
